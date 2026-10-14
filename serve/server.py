@@ -4,8 +4,8 @@
     python -m serve.server --engine strata --config strata.json --port 8080   (the real engine, resident)
 
 Endpoints: POST /v1/chat/completions (OpenAI, stream and non-stream), POST /v1/messages (Anthropic, stream and
-non-stream), GET /v1/models, GET /models, GET /v1/models/{model id} (and /models/{model id}: one model's details, 404
-for an id this server does not have), GET /props, GET /slots, GET /health, GET /mcp. One sequence at a time behind a FIFO (plan: one resident sequence).
+non-stream), GET /v1/models, GET /models, GET /v1/models/{model id} (one model's details, 404 for an id this server
+does not have), GET /props, GET /slots, GET /health, GET /mcp. One sequence at a time behind a FIFO (plan: one resident sequence).
 Image generation (optional, when the config has an "images" section): POST /v1/images/generations (OpenAI's shape,
 plus seed and steps) runs stable-diffusion.cpp's sd-cli for Qwen-Image-2.1-Turbo, one job at a time on the GPU the
 text engine uses (serve/images.py).
@@ -5403,14 +5403,14 @@ def make_handler(svc: Service):
             elif path in ("/v1/models", "/models"):
                 if self._authorized():
                     self._json(200, {"object": "list", "data": svc.model_view()})
-            elif path.startswith("/v1/models/") or path.startswith("/models/"):
-                # GET /v1/models/{model id} (and /models/{model id}): the one model's details, the same entry
-                # /v1/models lists under that id.  A client that only wants to know whether an id is really served
-                # here (Visual Studio's model picker, an IDE's "is this model available?" check) asks for it directly
-                # instead of reading the whole list; an id this server does not have answers 404.
+            elif path.startswith("/v1/models/"):
+                # GET /v1/models/{model id}: the one model's details, the same entry /v1/models lists under that id.
+                # A client that only wants to know whether an id is really served here (Visual Studio's model picker,
+                # an IDE's "is this model available?" check) asks for it directly instead of reading the whole list;
+                # an id this server does not have answers 404.  Only the /v1 path: llama.cpp's bare /models has never
+                # carried an id, and the OpenAI clients that do this check all call the versioned one.
                 if self._authorized():
-                    prefix = "/v1/models/" if path.startswith("/v1/models/") else "/models/"
-                    name = unquote(path[len(prefix):])
+                    name = unquote(path[len("/v1/models/"):])
                     detail = svc.model_detail(name) if name else None
                     if detail is None:
                         self._json(404, {"error": {"type": "invalid_request_error", "param": "model",

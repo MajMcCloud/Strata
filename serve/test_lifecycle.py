@@ -187,26 +187,31 @@ class Lifecycle(unittest.TestCase):
         self.assertIn("the next request restarts it", body["error"]["message"])
 
     def test_model_detail_endpoint_answers_for_every_id_it_serves(self):
-        # GET /v1/models/{id} (and /models/{id}): the same entry /v1/models lists, so a client can ask whether one
-        # id is really served here instead of reading the whole list (Visual Studio's model picker)
+        # GET /v1/models/{id}: the same entry /v1/models lists, so a client can ask whether one id is really served
+        # here instead of reading the whole list (Visual Studio's model picker)
         self.svc.set_aliases(["strata-alias"])
         listed = {m["id"]: m for m in self.request("/v1/models")[1]["data"]}
         self.assertEqual(self.engine.starts, 0)          # asking for a model never loads the engine
         for model_id in (self.svc.model, "strata-alias"):
-            for path in (f"/v1/models/{model_id}", f"/models/{model_id}"):
-                code, detail = self.request(path)
-                self.assertEqual(code, 200, path)
-                for key, value in listed[model_id].items():    # the same entry the list has under that id
-                    self.assertEqual(detail[key], value, path)
-                self.assertEqual(detail["id"], model_id)
-                self.assertEqual(detail["object"], "model")
-                self.assertEqual(detail["status"]["value"], "unloaded")   # listed, loads on use
-                self.assertEqual(detail["meta"]["n_ctx"], 4096)
-                self.assertEqual(detail["owned_by"], "strata")  # OpenAI's two fields, for a strict SDK client
-                self.assertIsInstance(detail["created"], int)
+            code, detail = self.request(f"/v1/models/{model_id}")
+            self.assertEqual(code, 200, model_id)
+            for key, value in listed[model_id].items():    # the same entry the list has under that id
+                self.assertEqual(detail[key], value, model_id)
+            self.assertEqual(detail["id"], model_id)
+            self.assertEqual(detail["object"], "model")
+            self.assertEqual(detail["status"]["value"], "unloaded")   # listed, loads on use
+            self.assertEqual(detail["meta"]["n_ctx"], 4096)
+            self.assertEqual(detail["owned_by"], "strata")  # OpenAI's two fields, for a strict SDK client
+            self.assertIsInstance(detail["created"], int)
         self.assertEqual(self.request("/v1/models/another-model")[0], 404)
         self.assertEqual(self.request("/v1/models/")[0], 200)   # the trailing slash is the list, as everywhere else
         self.assertEqual(self.engine.starts, 0)
+
+    def test_bare_models_path_still_only_lists(self):
+        # llama.cpp's /models has never taken an id, and nothing asks for one there: /models/{id} stays the plain
+        # 404 it always was, so the only detail endpoint is the versioned one
+        self.assertEqual(self.request(f"/models/{self.svc.model}")[0], 404)
+        self.assertEqual(self.request("/models")[1]["data"][0]["id"], self.svc.model)
 
     def test_model_detail_endpoint_is_empty_while_the_engine_is_gone(self):
         # an engine that died (and nothing loads it on use): it is not offered, so its id is not found either
